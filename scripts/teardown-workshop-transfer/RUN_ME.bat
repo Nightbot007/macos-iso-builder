@@ -182,7 +182,7 @@ MOD_IDS = [
     "3667727633", "3670441211", "3673109516",
 ]
 
-SUBSCRIBE_URL = "https://api.steampowered.com/ISteamRemoteStorage/SubscribePublishedFile/v1/"
+SUBSCRIBE_URL = "https://steamcommunity.com/sharedfiles/subscribe"
 
 
 def parse_steam_login_secure(raw_value: str) -> tuple[str, str]:
@@ -209,38 +209,30 @@ def subscribe_to_mod(
     session: requests.Session,
     mod_id: str,
     session_id: str,
-    steam_id: str,
-    access_token: str,
 ) -> bool:
-    """Send a subscribe request to the Steam Web API for a single Workshop mod.
+    """Send a subscribe request to Steam Community for a single Workshop mod.
 
-    Authentication uses the JWT access_token extracted from steamLoginSecure.
-    Cookies set for steamcommunity.com are not forwarded to api.steampowered.com
-    by the requests library (cross-domain), so the JWT must be passed explicitly
-    as the access_token query parameter.
+    Uses steamcommunity.com/sharedfiles/subscribe, which authenticates via the
+    session cookies (sessionid + steamLoginSecure) already attached to the
+    session object.  No API key or JWT parameter is required.
     """
     data = {
         "sessionid": session_id,
-        "steamid": steam_id,
-        "publishedfileid": mod_id,
+        "id": mod_id,
         "appid": APP_ID,
     }
     try:
         resp = session.post(
             SUBSCRIBE_URL,
-            params={"access_token": access_token},
             data=data,
             timeout=15,
         )
         resp.raise_for_status()
         result = resp.json()
-        # Handle both {"result": 1} and {"response": {"result": 1}} envelopes
-        if "response" in result:
-            code = result["response"].get("result", -1)
-        else:
-            code = result.get("result", -1)
-        # 1 = OK, 15 = already subscribed — both are fine
-        if code in (1, 15):
+        # Community endpoint returns {"success": 1} on success.
+        # success=8 (EResult::AlreadySubscribed) is also acceptable.
+        code = result.get("success", -1)
+        if code in (1, 8):
             return True
         print(f"  API result code {code}", file=sys.stderr)
         return False
@@ -324,10 +316,10 @@ def main() -> None:
         args.steam_login_secure = input("  Paste 'steamLoginSecure' value : ").strip()
         print()
 
-    # ── Extract the JWT access token from the steamLoginSecure cookie value ──
+    # ── Validate steamLoginSecure format ──────────────────────────────────────
     # steamLoginSecure format (after URL-decoding): STEAMID||JWT
     try:
-        steam_id, access_token = parse_steam_login_secure(args.steam_login_secure)
+        parse_steam_login_secure(args.steam_login_secure)
     except ValueError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         sys.exit(1)
@@ -363,7 +355,7 @@ def main() -> None:
 
     for i, mod_id in enumerate(MOD_IDS, start=1):
         print(f"[{i:>3}/{total}] Mod {mod_id} ... ", end="", flush=True)
-        success = subscribe_to_mod(session, mod_id, args.session_id, steam_id, access_token)
+        success = subscribe_to_mod(session, mod_id, args.session_id)
         if success:
             print("OK")
             ok_count += 1
