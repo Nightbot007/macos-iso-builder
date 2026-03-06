@@ -14,10 +14,10 @@ How to obtain your Steam session cookies
   1. Open https://steamcommunity.com in your browser and log in with your SECOND account.
   2. Press F12 to open Developer Tools, then go to:
        Application → Cookies → https://steamcommunity.com
-  3. Copy the values of the cookies named:
-       - sessionid
-       - steamLoginSecure
-  4. Pass those values to this script via --session-id and --steam-login-secure.
+  3. Copy the values of these two cookies:
+       - sessionid     (e.g. 193b8180e9e30ad5e9f8f1e8)
+       - steamLoginSecure  (starts with your SteamID, e.g. 765611990...%7C%7CeyA...)
+  4. Paste the values as-is; URL-encoded characters like %7C%7C are handled automatically.
 
 Options
 -------
@@ -30,6 +30,7 @@ Options
 import sys
 import time
 import argparse
+import urllib.parse
 import requests
 
 APP_ID = "1167630"  # Teardown
@@ -113,18 +114,70 @@ MOD_IDS = [
 SUBSCRIBE_URL = "https://api.steampowered.com/ISteamRemoteStorage/SubscribePublishedFile/v1/"
 
 
-def subscribe_to_mod(session: requests.Session, mod_id: str, session_id: str) -> bool:
-    """Send a subscribe request to the Steam Workshop API for a single mod."""
+def parse_steam_login_secure(raw_value: str) -> tuple[str, str]:
+    """
+    Parse the steamLoginSecure cookie value into (steam_id, jwt_token).
+
+    The cookie value is either:
+      - URL-encoded: 76561199...%7C%7CeyA...   (as copied from browser DevTools)
+      - Raw:         76561199...||eyA...
+    Both formats are handled automatically.
+    """
+    decoded = urllib.parse.unquote(raw_value)
+    if "||" not in decoded:
+        raise ValueError(
+            "steamLoginSecure does not contain '||'.  "
+            "Make sure you copied the full 'steamLoginSecure' cookie value "
+            "from https://steamcommunity.com (not the store)."
+        )
+    steam_id, jwt_token = decoded.split("||", 1)
+    return steam_id.strip(), jwt_token.strip()
+
+
+def subscribe_to_mod(
+    session: requests.Session,
+    mod_id: str,
+    session_id: str,
+    access_token: str,
+) -> bool:
+    """Send a subscribe request to the Steam Web API for a single Workshop mod.
+
+    Authentication uses the JWT access_token extracted from steamLoginSecure.
+    Cookies set for steamcommunity.com are not forwarded to api.steampowered.com
+    by the requests library (cross-domain), so the JWT must be passed explicitly
+    as the access_token query parameter.
+    """
     data = {
         "sessionid": session_id,
         "publishedfileid": mod_id,
+        "appid": APP_ID,
     }
     try:
-        resp = session.post(SUBSCRIBE_URL, data=data, timeout=15)
+        resp = session.post(
+            SUBSCRIBE_URL,
+            params={"access_token": access_token},
+            data=data,
+            timeout=15,
+        )
         resp.raise_for_status()
         result = resp.json()
-        # result == 1 means OK; result == 15 means already subscribed (also fine)
-        return result.get("result") in (1, 15)
+        # Handle both {"result": 1} and {"response": {"result": 1}} envelopes
+        if "response" in result:
+            code = result["response"].get("result", -1)
+        else:
+            code = result.get("result", -1)
+        # 1 = OK, 15 = already subscribed — both are fine
+        if code in (1, 15):
+            return True
+        print(f"  API result code {code}", file=sys.stderr)
+        return False
+    except requests.exceptions.HTTPError as exc:
+        body = ""
+        if exc.response is not None:
+            body = exc.response.text[:200]
+        status = exc.response.status_code if exc.response is not None else "?"
+        print(f"  HTTP {status} error: {body}", file=sys.stderr)
+        return False
     except requests.exceptions.RequestException as exc:
         print(f"  Request error: {exc}", file=sys.stderr)
         return False
@@ -178,6 +231,17 @@ def main() -> None:
         print(f"\n{len(MOD_IDS)} mod URLs listed.")
         return
 
+    # Extract the JWT access token from the steamLoginSecure cookie value.
+    # steamLoginSecure format (after URL-decoding): STEAMID||JWT
+    try:
+        _steam_id, access_token = parse_steam_login_secure(args.steam_login_secure)
+    except ValueError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        sys.exit(1)
+
+    # URL-decode the steamLoginSecure value so the cookie is stored correctly.
+    decoded_secure = urllib.parse.unquote(args.steam_login_secure)
+
     print("Make sure you are logged in with your SECOND account in the browser")
     print("before running this script, and that the cookies you provided are")
     print("for that second account.")
@@ -187,9 +251,7 @@ def main() -> None:
 
     session = requests.Session()
     session.cookies.set("sessionid", args.session_id, domain="steamcommunity.com")
-    session.cookies.set(
-        "steamLoginSecure", args.steam_login_secure, domain="steamcommunity.com"
-    )
+    session.cookies.set("steamLoginSecure", decoded_secure, domain="steamcommunity.com")
     session.headers.update(
         {
             "Referer": "https://steamcommunity.com/",
@@ -208,7 +270,7 @@ def main() -> None:
 
     for i, mod_id in enumerate(MOD_IDS, start=1):
         print(f"[{i:>3}/{total}] Mod {mod_id} ... ", end="", flush=True)
-        success = subscribe_to_mod(session, mod_id, args.session_id)
+        success = subscribe_to_mod(session, mod_id, args.session_id, access_token)
         if success:
             print("OK")
             ok_count += 1

@@ -2,8 +2,12 @@
 setlocal
 REM =========================================================
 REM  Teardown Steam Workshop Mod Subscriber – Batch Launcher
-REM  Runs subscribe_mods.ps1 in PowerShell (Windows 10/11)
+REM  Works correctly regardless of where it is launched from.
 REM =========================================================
+
+REM Change to the folder that contains this .bat file so that
+REM subscribe_mods.ps1 and subscribe_mods.py are always found.
+cd /d "%~dp0"
 
 echo.
 echo  Teardown Workshop Mod Subscriber

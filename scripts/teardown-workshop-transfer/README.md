@@ -17,25 +17,38 @@ Two approaches are provided:
 
 ### 1. Install Python and the dependency
 
-```cmd
-pip install -r requirements.txt
-```
+> **Important:** Run all commands **from inside the `teardown-workshop-transfer` folder**.
+> Open a Command Prompt in that folder (e.g. Shift + right-click → "Open command window here")
+> or navigate there first:
+>
+> ```cmd
+> cd C:\path\to\scripts\teardown-workshop-transfer
+> pip install -r requirements.txt
+> ```
 
 ### 2. Get your Steam session cookies
 
-1. Open **https://steamcommunity.com** in any browser.
+1. Open **https://steamcommunity.com** in any browser (not `store.steampowered.com`).
 2. Log in with your **second** Steam account.
 3. Press **F12** → **Application** tab → **Cookies** →
    `https://steamcommunity.com`.
 4. Copy the values of these two cookies:
-   - `sessionid`
-   - `steamLoginSecure`
+   - `sessionid` — looks like `193b8180e9e30ad5e9f8f1e8` (hex string)
+   - `steamLoginSecure` — starts with your SteamID followed by `%7C%7C` or `||`,
+     then a long JWT token
+
+> **Note:** `steamLoginSecure` will look like
+> `76561198000000000%7C%7CeyAidHlwIjogIkpXVCIs...`
+> The `%7C%7C` characters are URL-encoded `||` separators — paste the value
+> **exactly as shown** in the browser.  The script URL-decodes it automatically.
 
 > **Tip:** In Chrome/Edge the cookies are under
 > *Application → Storage → Cookies*.  In Firefox they are under
 > *Storage → Cookies*.
 
 ### 3. Run the script
+
+Make sure you are still in the `teardown-workshop-transfer` folder, then:
 
 ```cmd
 python subscribe_mods.py --session-id YOUR_SESSION_ID --steam-login-secure YOUR_STEAM_LOGIN_SECURE
@@ -124,7 +137,10 @@ D:\SteamLibrary\steamapps\workshop\content\1167630\<MOD_ID>
 
 | Problem | Solution |
 |---|---|
-| `FAILED` responses from Python script | Your cookies may have expired.  Log out and log back in to get fresh cookies. |
-| Steam doesn't open mod pages | Make sure Steam is running and logged in with your second account. |
+| `No such file or directory: 'requirements.txt'` or `can't open file '...\subscribe_mods.py'` | You ran the command from the wrong folder.  `cd` into `teardown-workshop-transfer` first. |
+| `400 Bad Request` errors | Your cookies were copied from the wrong site.  Use **https://steamcommunity.com** (not the store) and make sure you are logged in with your second account. |
+| `FAILED` responses with API result code | Your session may have expired.  Log out, log back in to steamcommunity.com, and copy fresh cookies. |
+| `steamLoginSecure does not contain '||'` | The cookie value was truncated.  Copy the full value — it should end with a base64 JWT string after `%7C%7C`. |
+| Steam doesn't open mod pages (PowerShell) | Make sure Steam is running and logged in with your second account. |
 | PowerShell says "cannot be loaded because running scripts is disabled" | Run `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` in PowerShell as Administrator. |
 | Python not found | Download from https://www.python.org/downloads/ and ensure "Add to PATH" is checked during install. |
