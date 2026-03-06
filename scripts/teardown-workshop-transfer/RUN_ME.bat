@@ -209,6 +209,7 @@ def subscribe_to_mod(
     session: requests.Session,
     mod_id: str,
     session_id: str,
+    steam_id: str,
     access_token: str,
 ) -> bool:
     """Send a subscribe request to the Steam Web API for a single Workshop mod.
@@ -220,6 +221,7 @@ def subscribe_to_mod(
     """
     data = {
         "sessionid": session_id,
+        "steamid": steam_id,
         "publishedfileid": mod_id,
         "appid": APP_ID,
     }
@@ -325,7 +327,7 @@ def main() -> None:
     # ── Extract the JWT access token from the steamLoginSecure cookie value ──
     # steamLoginSecure format (after URL-decoding): STEAMID||JWT
     try:
-        _steam_id, access_token = parse_steam_login_secure(args.steam_login_secure)
+        steam_id, access_token = parse_steam_login_secure(args.steam_login_secure)
     except ValueError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         sys.exit(1)
@@ -361,7 +363,7 @@ def main() -> None:
 
     for i, mod_id in enumerate(MOD_IDS, start=1):
         print(f"[{i:>3}/{total}] Mod {mod_id} ... ", end="", flush=True)
-        success = subscribe_to_mod(session, mod_id, args.session_id, access_token)
+        success = subscribe_to_mod(session, mod_id, args.session_id, steam_id, access_token)
         if success:
             print("OK")
             ok_count += 1
