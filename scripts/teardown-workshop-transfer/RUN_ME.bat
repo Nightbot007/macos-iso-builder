@@ -1,3 +1,74 @@
+@echo off
+setlocal
+cd /d "%~dp0"
+title Teardown Workshop Mod Subscriber
+
+echo.
+echo  ============================================================
+echo   Teardown Steam Workshop Mod Subscriber  -  Easy Launcher
+echo   Double-click this file to subscribe to all 358 Teardown
+echo   Workshop mods automatically.  No manual setup required.
+echo  ============================================================
+echo.
+
+:: ── 1. Check that Python is installed ─────────────────────────────────────
+where python >nul 2>&1
+if %errorlevel% neq 0 (
+    echo  [ERROR] Python was not found on this computer.
+    echo.
+    echo  Please install Python 3.8 or later from:
+    echo    https://www.python.org/downloads/
+    echo.
+    echo  IMPORTANT: Check "Add Python to PATH" during installation,
+    echo  then run this launcher again.
+    echo.
+    pause
+    exit /b 1
+)
+for /f "tokens=*" %%v in ('python --version 2^>^&1') do set "PYVER=%%v"
+echo  [OK] %PYVER% found.
+
+:: ── 2. Install the 'requests' library (silently, only if missing) ──────────
+echo  Checking Python dependencies...
+python -m pip install requests --quiet --quiet --disable-pip-version-check 2>nul
+echo  [OK] Dependencies ready.
+echo.
+
+:: ── 3. Extract the embedded Python script into a temporary file ────────────
+set "TMPPY=%TEMP%\teardown_subscribe_%RANDOM%.py"
+powershell -NoProfile -Command "$f=Get-Content -LiteralPath '%~f0' -Encoding UTF8; $i=[Array]::IndexOf($f,'__PYTHON_BEGIN__')+1; if($i -le 0){Write-Error 'Marker not found in launcher - file may be corrupted';exit 1}; $f[$i..($f.Length-1)] | Set-Content -LiteralPath '%TMPPY%' -Encoding UTF8"
+if %errorlevel% neq 0 (
+    echo  [ERROR] Could not extract the built-in Python script.
+    echo  The launcher file may be corrupted - please re-download it.
+    pause
+    exit /b 1
+)
+
+:: ── 4. Run the Python script ───────────────────────────────────────────────
+::     If no arguments are given to the launcher it will prompt interactively.
+::     You can also pass arguments directly, e.g.:
+::       RUN_ME.bat --session-id abc123 --steam-login-secure 765...%7C%7CeyA...
+python "%TMPPY%" %*
+set "EXIT_CODE=%errorlevel%"
+
+:: ── 5. Clean up the temporary script ──────────────────────────────────────
+del "%TMPPY%" >nul 2>&1
+
+echo.
+if %EXIT_CODE% equ 0 (
+    echo  ============================================================
+    echo   All done!  Press any key to close this window.
+    echo  ============================================================
+) else (
+    echo  ============================================================
+    echo   Finished with errors.  Check the output above for details.
+    echo  ============================================================
+)
+echo.
+pause >nul
+exit /b %EXIT_CODE%
+
+__PYTHON_BEGIN__
 #!/usr/bin/env python3
 """
 Steam Workshop Mod Subscriber for Teardown (AppID: 1167630)
